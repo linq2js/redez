@@ -1,15 +1,17 @@
 import { createStore, applyMiddleware, combineReducers } from "redux";
 import React from "react";
-import { connect as reduxConnect, Provider } from "react-redux";
+import { connect as originalConnect, Provider } from "react-redux";
 import { createSelector, createStructuredSelector } from "reselect";
 
 const actions = {};
+const actionHandlers = {};
 const commonSelectors = {};
 const defaultSelector = x => x;
 const types = {
+  init: "@@init",
   dispatch: "@@dispatch"
 };
-let actionId = new Date().getTime();
+let uniqueId = new Date().getTime();
 
 function createStateMapper(prop) {
   if (prop[0] === "@") {
@@ -19,23 +21,48 @@ function createStateMapper(prop) {
   return state => state[prop];
 }
 
-export function actionCreator(action) {
-  if (typeof action === "function") {
-    if (!action.__actionId) {
-      action.__actionId = `@@${action.name}_${actionId++}`;
+function defaultMiddleware(store) {
+  return next => action => {
+    if (action.handler && action.handler.toString() in actionHandlers) {
+      return actionHandlers[action.handler](store, next, action);
     }
-    let actionMetadata = actions[action.__actionId];
+    return next(action);
+  };
+}
+
+/**
+ * register dynamic action handler
+ * @param handler
+ */
+export function actionHandler(handler) {
+  if (!handler.type) {
+    handler.type = `@@${handler.name}_${uniqueId++}`;
+  }
+
+  actionHandlers[handler.type] = handler;
+
+  return handler.type;
+}
+
+export function actionCreator(action) {
+  // single action creator
+  if (typeof action === "function") {
+    if (!action.type) {
+      action.type = `@@${action.name}_${uniqueId++}`;
+    }
+    let actionMetadata = actions[action.type];
     if (!actionMetadata) {
-      actions[action.__actionId] = actionMetadata = {
+      actions[action.type] = actionMetadata = {
         handler: action,
-        creator(payload) {
-          return { type: action.__actionId, payload };
+        creator(payload, extraProps) {
+          return Object.assign({ type: action.type, payload }, extraProps);
         }
       };
     }
 
     return actionMetadata.creator;
   }
+  // support multiple action creators
   const actionCreators = {};
   Object.entries(action).forEach(
     pair => (actionCreators[pair[0]] = actionCreator(pair[1]))
@@ -61,11 +88,14 @@ export function connect(mapStateToProps, ...args) {
       mapStateToProps = structuredSelector;
     }
     if (typeof mapStateToProps !== "function") {
-      return reduxConnect(createStructuredSelector(mapStateToProps), ...args);
+      return originalConnect(
+        createStructuredSelector(mapStateToProps),
+        ...args
+      );
     }
   }
 
-  return reduxConnect(mapStateToProps, ...args);
+  return originalConnect(mapStateToProps, ...args);
 }
 
 export function create(initialState = {}, ...middlewares) {
@@ -91,10 +121,10 @@ export function create(initialState = {}, ...middlewares) {
     return currentReducer ? currentReducer(state, action) : state;
   };
 
-  const store = middlewares.length
-    ? // create store with middlewares
-      createStore(defaultReducer, applyMiddleware(...middlewares))
-    : createStore(defaultReducer);
+  const store = createStore(
+    defaultReducer,
+    applyMiddleware(...[defaultMiddleware].concat(middlewares))
+  );
 
   return Object.assign({}, store, {
     // register reducer
@@ -109,6 +139,9 @@ export function create(initialState = {}, ...middlewares) {
       } else {
         currentReducer = reducer;
       }
+
+      // dispatch init method after reducer added
+      store.dispatch({ type: types.init });
     },
     Provider(props) {
       return React.createElement(Provider, Object.assign({ store }, props));

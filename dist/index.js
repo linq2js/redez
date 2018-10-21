@@ -3,6 +3,7 @@
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
+exports.actionHandler = actionHandler;
 exports.actionCreator = actionCreator;
 exports.connect = connect;
 exports.create = create;
@@ -19,15 +20,19 @@ var _reselect = require("reselect");
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
+function _toConsumableArray(arr) { if (Array.isArray(arr)) { for (var i = 0, arr2 = Array(arr.length); i < arr.length; i++) { arr2[i] = arr[i]; } return arr2; } else { return Array.from(arr); } }
+
 var actions = {};
+var actionHandlers = {};
 var commonSelectors = {};
 var defaultSelector = function defaultSelector(x) {
   return x;
 };
 var types = {
+  init: "@@init",
   dispatch: "@@dispatch"
 };
-var actionId = new Date().getTime();
+var uniqueId = new Date().getTime();
 
 function createStateMapper(prop) {
   if (prop[0] === "@") {
@@ -41,23 +46,50 @@ function createStateMapper(prop) {
   };
 }
 
+function defaultMiddleware(store) {
+  return function (next) {
+    return function (action) {
+      if (action.handler && action.handler.toString() in actionHandlers) {
+        return actionHandlers[action.handler](store, next, action);
+      }
+      return next(action);
+    };
+  };
+}
+
+/**
+ * register dynamic action handler
+ * @param handler
+ */
+function actionHandler(handler) {
+  if (!handler.type) {
+    handler.type = "@@" + handler.name + "_" + uniqueId++;
+  }
+
+  actionHandlers[handler.type] = handler;
+
+  return handler.type;
+}
+
 function actionCreator(action) {
+  // single action creator
   if (typeof action === "function") {
-    if (!action.__actionId) {
-      action.__actionId = "@@" + action.name + "_" + actionId++;
+    if (!action.type) {
+      action.type = "@@" + action.name + "_" + uniqueId++;
     }
-    var actionMetadata = actions[action.__actionId];
+    var actionMetadata = actions[action.type];
     if (!actionMetadata) {
-      actions[action.__actionId] = actionMetadata = {
+      actions[action.type] = actionMetadata = {
         handler: action,
-        creator: function creator(payload) {
-          return { type: action.__actionId, payload: payload };
+        creator: function creator(payload, extraProps) {
+          return Object.assign({ type: action.type, payload: payload }, extraProps);
         }
       };
     }
 
     return actionMetadata.creator;
   }
+  // support multiple action creators
   var actionCreators = {};
   Object.entries(action).forEach(function (pair) {
     return actionCreators[pair[0]] = actionCreator(pair[1]);
@@ -106,8 +138,8 @@ function create() {
 
     // is custom action
     if (action.type in actions) {
-      var actionHandler = actions[action.type].handler;
-      var actionResult = actionHandler(state, action.payload, lazyDispatch);
+      var _actionHandler = actions[action.type].handler;
+      var actionResult = _actionHandler(state, action.payload, lazyDispatch);
 
       if (actionResult && actionResult.type === types.dispatch) {
         setTimeout(function () {
@@ -126,8 +158,7 @@ function create() {
     middlewares[_key2 - 1] = arguments[_key2];
   }
 
-  var store = middlewares.length ? // create store with middlewares
-  (0, _redux.createStore)(defaultReducer, _redux.applyMiddleware.apply(undefined, middlewares)) : (0, _redux.createStore)(defaultReducer);
+  var store = (0, _redux.createStore)(defaultReducer, _redux.applyMiddleware.apply(undefined, _toConsumableArray([defaultMiddleware].concat(middlewares))));
 
   return Object.assign({}, store, {
     // register reducer
@@ -143,6 +174,9 @@ function create() {
       } else {
         currentReducer = _reducer;
       }
+
+      // dispatch init method after reducer added
+      store.dispatch({ type: types.init });
     },
     Provider: function Provider(props) {
       return _react2.default.createElement(_reactRedux.Provider, Object.assign({ store: store }, props));
