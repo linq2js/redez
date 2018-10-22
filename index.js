@@ -114,9 +114,10 @@ export function create(initialState = {}, ...middlewares) {
         setTimeout(() => {
           actionResult.actions.forEach(action => store.dispatch(action));
         }, 0);
-        return actionResult.state;
+        state = actionResult.state;
+      } else {
+        state = actionResult;
       }
-      return actionResult;
     }
     return currentReducer ? currentReducer(state, action) : state;
   };
