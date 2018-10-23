@@ -31,6 +31,8 @@ function defaultMiddleware(store) {
   };
 }
 
+export { compose } from "redux";
+
 /**
  * register dynamic action reducer
  * @param reducer

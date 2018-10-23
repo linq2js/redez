@@ -3,13 +3,21 @@
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
+exports.compose = undefined;
+
+var _redux = require("redux");
+
+Object.defineProperty(exports, "compose", {
+  enumerable: true,
+  get: function get() {
+    return _redux.compose;
+  }
+});
 exports.actionReducer = actionReducer;
 exports.actionHandler = actionHandler;
 exports.actionCreator = actionCreator;
 exports.connect = connect;
 exports.create = create;
-
-var _redux = require("redux");
 
 var _react = require("react");
 
