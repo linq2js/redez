@@ -89,6 +89,8 @@ function actionHandler(handler) {
 }
 
 function actionCreator(action) {
+  var options = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+
   // single action creator
   if (typeof action === "function") {
     if (!action.type) {
@@ -99,7 +101,7 @@ function actionCreator(action) {
       actions[action.type] = actionMetadata = {
         handler: action,
         creator: function creator(payload, extraProps) {
-          return Object.assign({ type: action.type, payload: payload }, extraProps);
+          return Object.assign({ type: action.type, payload: payload }, options, extraProps);
         }
       };
     }
@@ -109,7 +111,7 @@ function actionCreator(action) {
   // support multiple action creators
   var actionCreators = {};
   Object.entries(action).forEach(function (pair) {
-    return actionCreators[pair[0]] = actionCreator(pair[1]);
+    return actionCreators[pair[0]] = actionCreator(pair[1], options);
   });
   return actionCreators;
 }

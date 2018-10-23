@@ -60,7 +60,7 @@ export function actionHandler(handler) {
   return handler.type;
 }
 
-export function actionCreator(action) {
+export function actionCreator(action, options = {}) {
   // single action creator
   if (typeof action === "function") {
     if (!action.type) {
@@ -71,7 +71,11 @@ export function actionCreator(action) {
       actions[action.type] = actionMetadata = {
         handler: action,
         creator(payload, extraProps) {
-          return Object.assign({ type: action.type, payload }, extraProps);
+          return Object.assign(
+            { type: action.type, payload },
+            options,
+            extraProps
+          );
         }
       };
     }
@@ -81,7 +85,7 @@ export function actionCreator(action) {
   // support multiple action creators
   const actionCreators = {};
   Object.entries(action).forEach(
-    pair => (actionCreators[pair[0]] = actionCreator(pair[1]))
+    pair => (actionCreators[pair[0]] = actionCreator(pair[1], options))
   );
   return actionCreators;
 }
