@@ -3,6 +3,7 @@
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
+exports.actionReducer = actionReducer;
 exports.actionHandler = actionHandler;
 exports.actionCreator = actionCreator;
 exports.connect = connect;
@@ -24,6 +25,7 @@ function _toConsumableArray(arr) { if (Array.isArray(arr)) { for (var i = 0, arr
 
 var actions = {};
 var actionHandlers = {};
+var actionReducers = {};
 var commonSelectors = {};
 var defaultSelector = function defaultSelector(x) {
   return x;
@@ -55,6 +57,21 @@ function defaultMiddleware(store) {
       return next(action);
     };
   };
+}
+
+/**
+ * register dynamic action reducer
+ * @param reducer
+ * @returns {string}
+ */
+function actionReducer(reducer) {
+  if (!reducer.type) {
+    reducer.type = "@@" + reducer.name + "_" + uniqueId++;
+  }
+
+  actionReducers[reducer.type] = reducer;
+
+  return reducer.type;
 }
 
 /**
@@ -152,6 +169,12 @@ function create() {
         state = actionResult;
       }
     }
+
+    if (action.reducer in actionReducers) {
+      var _actionReducer = actionReducers[action.reducer];
+      state = _actionReducer(state, action);
+    }
+
     return currentReducer ? currentReducer(state, action) : state;
   };
 

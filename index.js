@@ -5,6 +5,7 @@ import { createSelector, createStructuredSelector } from "reselect";
 
 const actions = {};
 const actionHandlers = {};
+const actionReducers = {};
 const commonSelectors = {};
 const defaultSelector = x => x;
 const types = {
@@ -28,6 +29,21 @@ function defaultMiddleware(store) {
     }
     return next(action);
   };
+}
+
+/**
+ * register dynamic action reducer
+ * @param reducer
+ * @returns {string}
+ */
+export function actionReducer(reducer) {
+  if (!reducer.type) {
+    reducer.type = `@@${reducer.name}_${uniqueId++}`;
+  }
+
+  actionReducers[reducer.type] = reducer;
+
+  return reducer.type;
 }
 
 /**
@@ -119,6 +135,12 @@ export function create(initialState = {}, ...middlewares) {
         state = actionResult;
       }
     }
+
+    if (action.reducer in actionReducers) {
+      const actionReducer = actionReducers[action.reducer];
+      state = actionReducer(state, action);
+    }
+
     return currentReducer ? currentReducer(state, action) : state;
   };
 
