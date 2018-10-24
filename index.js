@@ -39,6 +39,10 @@ export { compose } from "redux";
  * @returns {string}
  */
 export function actionReducer(reducer) {
+  if (typeof reducer !== "function") {
+    reducer = combineReducers(reducer);
+  }
+
   if (!reducer.type) {
     reducer.type = `@@${reducer.name}_${uniqueId++}`;
   }

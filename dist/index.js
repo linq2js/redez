@@ -73,6 +73,10 @@ function defaultMiddleware(store) {
  * @returns {string}
  */
 function actionReducer(reducer) {
+  if (typeof reducer !== "function") {
+    reducer = (0, _redux.combineReducers)(reducer);
+  }
+
   if (!reducer.type) {
     reducer.type = "@@" + reducer.name + "_" + uniqueId++;
   }
