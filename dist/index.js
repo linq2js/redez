@@ -5,6 +5,8 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.compose = undefined;
 
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
 var _redux = require("redux");
 
 Object.defineProperty(exports, "compose", {
@@ -18,6 +20,7 @@ exports.actionHandler = actionHandler;
 exports.actionCreator = actionCreator;
 exports.connect = connect;
 exports.create = create;
+exports.withReducer = withReducer;
 
 var _react = require("react");
 
@@ -27,7 +30,17 @@ var _reactRedux = require("react-redux");
 
 var _reselect = require("reselect");
 
+var _propTypes = require("prop-types");
+
+var _propTypes2 = _interopRequireDefault(_propTypes);
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
+
+function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
 function _toConsumableArray(arr) { if (Array.isArray(arr)) { for (var i = 0, arr2 = Array(arr.length); i < arr.length; i++) { arr2[i] = arr[i]; } return arr2; } else { return Array.from(arr); } }
 
@@ -43,6 +56,12 @@ var types = {
   dispatch: "@@dispatch"
 };
 var uniqueId = new Date().getTime();
+
+function generateType(obj) {
+  if (!obj.type) {
+    obj.type = "@@" + obj.name + "_" + uniqueId++;
+  }
+}
 
 function createStateMapper(prop) {
   if (prop[0] === "@") {
@@ -77,9 +96,7 @@ function actionReducer(reducer) {
     reducer = (0, _redux.combineReducers)(reducer);
   }
 
-  if (!reducer.type) {
-    reducer.type = "@@" + reducer.name + "_" + uniqueId++;
-  }
+  generateType(reducer);
 
   actionReducers[reducer.type] = reducer;
 
@@ -91,9 +108,7 @@ function actionReducer(reducer) {
  * @param handler
  */
 function actionHandler(handler) {
-  if (!handler.type) {
-    handler.type = "@@" + handler.name + "_" + uniqueId++;
-  }
+  generateType(handler);
 
   actionHandlers[handler.type] = handler;
 
@@ -105,9 +120,8 @@ function actionCreator(action) {
 
   // single action creator
   if (typeof action === "function") {
-    if (!action.type) {
-      action.type = "@@" + action.name + "_" + uniqueId++;
-    }
+    generateType(action);
+
     var actionMetadata = actions[action.type];
     if (!actionMetadata) {
       actions[action.type] = actionMetadata = {
@@ -155,6 +169,7 @@ function create() {
   var initialState = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
 
   var currentReducer = void 0;
+  var registeredReducers = {};
 
   var lazyDispatch = function lazyDispatch(state) {
     for (var _len3 = arguments.length, actions = Array(_len3 > 1 ? _len3 - 1 : 0), _key3 = 1; _key3 < _len3; _key3++) {
@@ -204,6 +219,13 @@ function create() {
       if (typeof _reducer !== "function") {
         _reducer = (0, _redux.combineReducers)(_reducer);
       }
+
+      generateType(_reducer);
+
+      if (_reducer.type in registeredReducers) return;
+
+      registeredReducers[_reducer.type] = true;
+
       if (currentReducer) {
         var prevReducer = currentReducer;
         currentReducer = function currentReducer(state, action) {
@@ -222,6 +244,41 @@ function create() {
   });
 
   return app;
+}
+
+function withReducer(reducer) {
+  if (typeof reducer !== "function") {
+    reducer = (0, _redux.combineReducers)(reducer);
+  }
+
+  return function (WrappedComponent) {
+    var ReducerInjector = function (_React$Component) {
+      _inherits(ReducerInjector, _React$Component);
+
+      function ReducerInjector() {
+        _classCallCheck(this, ReducerInjector);
+
+        return _possibleConstructorReturn(this, (ReducerInjector.__proto__ || Object.getPrototypeOf(ReducerInjector)).apply(this, arguments));
+      }
+
+      _createClass(ReducerInjector, [{
+        key: "render",
+        value: function render() {
+          this.context.store.reducer(reducer);
+          return _react2.default.createElement(WrappedComponent, this.props);
+        }
+      }]);
+
+      return ReducerInjector;
+    }(_react2.default.Component);
+
+    ReducerInjector.contextTypes = {
+      store: _propTypes2.default.object.isRequired
+    };
+
+    ReducerInjector.displayName = "withReducer(" + (WrappedComponent.displayName || WrappedComponent.name || "Component") + ")";
+    return ReducerInjector;
+  };
 }
 
 exports.default = create;

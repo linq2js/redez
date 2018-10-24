@@ -203,20 +203,21 @@ export function withReducer(reducer) {
   }
 
   return function(WrappedComponent) {
-    return class ReducerInjector extends React.Component {
-      static contextTypes = {
-        store: PropTypes.object.isRequired
-      };
-
-      static displayName = `withReducer(${WrappedComponent.displayName ||
-        WrappedComponent.name ||
-        "Component"})`;
-
+    class ReducerInjector extends React.Component {
       render() {
         this.context.store.reducer(reducer);
-        return <WrappedComponent {...this.props} />;
+        return React.createElement(WrappedComponent, this.props);
       }
+    }
+
+    ReducerInjector.contextTypes = {
+      store: PropTypes.object.isRequired
     };
+
+    ReducerInjector.displayName = `withReducer(${WrappedComponent.displayName ||
+      WrappedComponent.name ||
+      "Component"})`;
+    return ReducerInjector;
   };
 }
 
