@@ -2,6 +2,7 @@ import { createStore, applyMiddleware, combineReducers } from "redux";
 import React from "react";
 import { connect as originalConnect, Provider } from "react-redux";
 import { createSelector, createStructuredSelector } from "reselect";
+import PropTypes from "prop-types";
 
 const actions = {};
 const actionHandlers = {};
@@ -13,6 +14,12 @@ const types = {
   dispatch: "@@dispatch"
 };
 let uniqueId = new Date().getTime();
+
+function generateType(obj) {
+  if (!obj.type) {
+    obj.type = `@@${obj.name}_${uniqueId++}`;
+  }
+}
 
 function createStateMapper(prop) {
   if (prop[0] === "@") {
@@ -43,9 +50,7 @@ export function actionReducer(reducer) {
     reducer = combineReducers(reducer);
   }
 
-  if (!reducer.type) {
-    reducer.type = `@@${reducer.name}_${uniqueId++}`;
-  }
+  generateType(reducer);
 
   actionReducers[reducer.type] = reducer;
 
@@ -57,9 +62,7 @@ export function actionReducer(reducer) {
  * @param handler
  */
 export function actionHandler(handler) {
-  if (!handler.type) {
-    handler.type = `@@${handler.name}_${uniqueId++}`;
-  }
+  generateType(handler);
 
   actionHandlers[handler.type] = handler;
 
@@ -69,9 +72,8 @@ export function actionHandler(handler) {
 export function actionCreator(action, options = {}) {
   // single action creator
   if (typeof action === "function") {
-    if (!action.type) {
-      action.type = `@@${action.name}_${uniqueId++}`;
-    }
+    generateType(action);
+
     let actionMetadata = actions[action.type];
     if (!actionMetadata) {
       actions[action.type] = actionMetadata = {
@@ -126,6 +128,7 @@ export function connect(mapStateToProps, ...args) {
 
 export function create(initialState = {}, ...middlewares) {
   let currentReducer;
+  const registeredReducers = {};
 
   const lazyDispatch = (state, ...actions) => {
     return { type: types.dispatch, state, actions };
@@ -159,12 +162,19 @@ export function create(initialState = {}, ...middlewares) {
     applyMiddleware(...[defaultMiddleware].concat(middlewares))
   );
 
-  return Object.assign({}, store, {
+  const app = Object.assign({}, store, {
     // register reducer
     reducer(reducer) {
       if (typeof reducer !== "function") {
         reducer = combineReducers(reducer);
       }
+
+      generateType(reducer);
+
+      if (reducer.type in registeredReducers) return;
+
+      registeredReducers[reducer.type] = true;
+
       if (currentReducer) {
         const prevReducer = currentReducer;
         currentReducer = (state, action) =>
@@ -177,9 +187,37 @@ export function create(initialState = {}, ...middlewares) {
       store.dispatch({ type: types.init });
     },
     Provider(props) {
-      return React.createElement(Provider, Object.assign({ store }, props));
+      return React.createElement(
+        Provider,
+        Object.assign({ store: app }, props)
+      );
     }
   });
+
+  return app;
+}
+
+export function withReducer(reducer) {
+  if (typeof reducer !== "function") {
+    reducer = combineReducers(reducer);
+  }
+
+  return function(WrappedComponent) {
+    return class ReducerInjector extends React.Component {
+      static contextTypes = {
+        store: PropTypes.object.isRequired
+      };
+
+      static displayName = `withReducer(${WrappedComponent.displayName ||
+        WrappedComponent.name ||
+        "Component"})`;
+
+      render() {
+        this.context.store.reducer(reducer);
+        return <WrappedComponent {...this.props} />;
+      }
+    };
+  };
 }
 
 export default create;

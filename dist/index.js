@@ -198,7 +198,7 @@ function create() {
 
   var store = (0, _redux.createStore)(defaultReducer, _redux.applyMiddleware.apply(undefined, _toConsumableArray([defaultMiddleware].concat(middlewares))));
 
-  return Object.assign({}, store, {
+  var app = Object.assign({}, store, {
     // register reducer
     reducer: function reducer(_reducer) {
       if (typeof _reducer !== "function") {
@@ -217,9 +217,11 @@ function create() {
       store.dispatch({ type: types.init });
     },
     Provider: function Provider(props) {
-      return _react2.default.createElement(_reactRedux.Provider, Object.assign({ store: store }, props));
+      return _react2.default.createElement(_reactRedux.Provider, Object.assign({ store: app }, props));
     }
   });
+
+  return app;
 }
 
 exports.default = create;
