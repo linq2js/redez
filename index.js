@@ -1,4 +1,8 @@
-import { createStore, applyMiddleware, combineReducers } from "redux";
+import {
+  createStore,
+  applyMiddleware,
+  combineReducers as reduxCombineReducers
+} from "redux";
 import React from "react";
 import { connect as originalConnect, Provider } from "react-redux";
 import { createSelector, createStructuredSelector } from "reselect";
@@ -9,16 +13,27 @@ const actionHandlers = {};
 const actionReducers = {};
 const commonSelectors = {};
 const defaultSelector = x => x;
+const registeredTypes = {};
 const types = {
   init: "@@init",
   dispatch: "@@dispatch"
 };
+const initAction = { type: types.init };
 let uniqueId = new Date().getTime();
 
-function generateType(obj) {
-  if (!obj.type) {
+function generateType(obj, addToTypeRegistry) {
+  if (typeof obj === "function" && !obj.type) {
     obj.type = `@@${obj.name}_${uniqueId++}`;
+    if (addToTypeRegistry) {
+      registeredTypes[obj.type] = obj;
+    }
   }
+}
+
+function combineReducers(reducer) {
+  return Object.assign(reduxCombineReducers(reducer), {
+    original: reducer
+  });
 }
 
 function createStateMapper(prop) {
@@ -127,13 +142,36 @@ export function connect(mapStateToProps, ...args) {
 }
 
 export function create(initialState = {}, ...middlewares) {
-  let currentReducer;
+  const reducers = [];
   const registeredReducers = {};
+  const initializedReducers = {};
 
+  const initReducer = (state, reducer) => {
+    if (reducer.original && !(reducer.type in initializedReducers)) {
+      initializedReducers[reducer.type] = true;
+      const prevState = state;
+      Object.entries(reducer.original).forEach(pair => {
+        if (typeof state[pair[0]] === "undefined") {
+          if (prevState === state) {
+            state = Object.assign({}, state);
+          }
+          state[pair[0]] = pair[1](state[pair[0]], initAction);
+        }
+      });
+    }
+    return state;
+  };
   const lazyDispatch = (state, ...actions) => {
     return { type: types.dispatch, state, actions };
   };
   const defaultReducer = (state = initialState, action) => {
+    if (reducers.length) {
+      state = reducers.reduce(
+        (current, reducer) => reducer(current, action),
+        state
+      );
+    }
+
     // is custom action
     if (action.type in actions) {
       const actionHandler = actions[action.type].handler;
@@ -151,10 +189,11 @@ export function create(initialState = {}, ...middlewares) {
 
     if (action.reducer in actionReducers) {
       const actionReducer = actionReducers[action.reducer];
+      state = initReducer(state, actionReducer);
       state = actionReducer(state, action);
     }
 
-    return currentReducer ? currentReducer(state, action) : state;
+    return state;
   };
 
   const store = createStore(
@@ -175,16 +214,10 @@ export function create(initialState = {}, ...middlewares) {
 
       registeredReducers[reducer.type] = true;
 
-      if (currentReducer) {
-        const prevReducer = currentReducer;
-        currentReducer = (state, action) =>
-          reducer(prevReducer(state, action), action);
-      } else {
-        currentReducer = reducer;
-      }
+      reducers.push(reducer);
 
       // dispatch init method after reducer added
-      store.dispatch({ type: types.init });
+      store.dispatch(initAction);
     },
     Provider(props) {
       return React.createElement(
@@ -219,6 +252,41 @@ export function withReducer(reducer) {
       "Component"})`;
     return ReducerInjector;
   };
+}
+
+export function getType(action) {
+  generateType(action, true);
+
+  return action.type;
+}
+
+export function fromType(type) {
+  if (typeof type === "function") {
+    return type;
+  }
+  return registeredTypes[type];
+}
+
+export function createAction(creator, payload, extra) {
+  return Object.assign(
+    {
+      type: getType(creator),
+      payload
+    },
+    extra
+  );
+}
+
+export function select(selectors, result) {
+  if (!result) {
+    result = arg => arg;
+  }
+
+  if (Array.isArray(selectors)) {
+    return createSelector(selectors, result);
+  }
+
+  return createStructuredSelector(selectors);
 }
 
 export default create;

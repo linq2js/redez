@@ -21,6 +21,10 @@ exports.actionCreator = actionCreator;
 exports.connect = connect;
 exports.create = create;
 exports.withReducer = withReducer;
+exports.getType = getType;
+exports.fromType = fromType;
+exports.createAction = createAction;
+exports.select = select;
 
 var _react = require("react");
 
@@ -51,16 +55,27 @@ var commonSelectors = {};
 var defaultSelector = function defaultSelector(x) {
   return x;
 };
+var registeredTypes = {};
 var types = {
   init: "@@init",
   dispatch: "@@dispatch"
 };
+var initAction = { type: types.init };
 var uniqueId = new Date().getTime();
 
-function generateType(obj) {
-  if (!obj.type) {
+function generateType(obj, addToTypeRegistry) {
+  if (typeof obj === "function" && !obj.type) {
     obj.type = "@@" + obj.name + "_" + uniqueId++;
+    if (addToTypeRegistry) {
+      registeredTypes[obj.type] = obj;
+    }
   }
+}
+
+function combineReducers(reducer) {
+  return Object.assign((0, _redux.combineReducers)(reducer), {
+    original: reducer
+  });
 }
 
 function createStateMapper(prop) {
@@ -93,7 +108,7 @@ function defaultMiddleware(store) {
  */
 function actionReducer(reducer) {
   if (typeof reducer !== "function") {
-    reducer = (0, _redux.combineReducers)(reducer);
+    reducer = combineReducers(reducer);
   }
 
   generateType(reducer);
@@ -168,9 +183,25 @@ function connect(mapStateToProps) {
 function create() {
   var initialState = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
 
-  var currentReducer = void 0;
+  var reducers = [];
   var registeredReducers = {};
+  var initializedReducers = {};
 
+  var initReducer = function initReducer(state, reducer) {
+    if (reducer.original && !(reducer.type in initializedReducers)) {
+      initializedReducers[reducer.type] = true;
+      var prevState = state;
+      Object.entries(reducer.original).forEach(function (pair) {
+        if (typeof state[pair[0]] === "undefined") {
+          if (prevState === state) {
+            state = Object.assign({}, state);
+          }
+          state[pair[0]] = pair[1](state[pair[0]], initAction);
+        }
+      });
+    }
+    return state;
+  };
   var lazyDispatch = function lazyDispatch(state) {
     for (var _len3 = arguments.length, actions = Array(_len3 > 1 ? _len3 - 1 : 0), _key3 = 1; _key3 < _len3; _key3++) {
       actions[_key3 - 1] = arguments[_key3];
@@ -181,6 +212,12 @@ function create() {
   var defaultReducer = function defaultReducer() {
     var state = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : initialState;
     var action = arguments[1];
+
+    if (reducers.length) {
+      state = reducers.reduce(function (current, reducer) {
+        return reducer(current, action);
+      }, state);
+    }
 
     // is custom action
     if (action.type in actions) {
@@ -201,10 +238,11 @@ function create() {
 
     if (action.reducer in actionReducers) {
       var _actionReducer = actionReducers[action.reducer];
+      state = initReducer(state, _actionReducer);
       state = _actionReducer(state, action);
     }
 
-    return currentReducer ? currentReducer(state, action) : state;
+    return state;
   };
 
   for (var _len2 = arguments.length, middlewares = Array(_len2 > 1 ? _len2 - 1 : 0), _key2 = 1; _key2 < _len2; _key2++) {
@@ -217,7 +255,7 @@ function create() {
     // register reducer
     reducer: function reducer(_reducer) {
       if (typeof _reducer !== "function") {
-        _reducer = (0, _redux.combineReducers)(_reducer);
+        _reducer = combineReducers(_reducer);
       }
 
       generateType(_reducer);
@@ -226,17 +264,10 @@ function create() {
 
       registeredReducers[_reducer.type] = true;
 
-      if (currentReducer) {
-        var prevReducer = currentReducer;
-        currentReducer = function currentReducer(state, action) {
-          return _reducer(prevReducer(state, action), action);
-        };
-      } else {
-        currentReducer = _reducer;
-      }
+      reducers.push(_reducer);
 
       // dispatch init method after reducer added
-      store.dispatch({ type: types.init });
+      store.dispatch(initAction);
     },
     Provider: function Provider(props) {
       return _react2.default.createElement(_reactRedux.Provider, Object.assign({ store: app }, props));
@@ -248,7 +279,7 @@ function create() {
 
 function withReducer(reducer) {
   if (typeof reducer !== "function") {
-    reducer = (0, _redux.combineReducers)(reducer);
+    reducer = combineReducers(reducer);
   }
 
   return function (WrappedComponent) {
@@ -279,6 +310,40 @@ function withReducer(reducer) {
     ReducerInjector.displayName = "withReducer(" + (WrappedComponent.displayName || WrappedComponent.name || "Component") + ")";
     return ReducerInjector;
   };
+}
+
+function getType(action) {
+  generateType(action, true);
+
+  return action.type;
+}
+
+function fromType(type) {
+  if (typeof type === "function") {
+    return type;
+  }
+  return registeredTypes[type];
+}
+
+function createAction(creator, payload, extra) {
+  return Object.assign({
+    type: getType(creator),
+    payload: payload
+  }, extra);
+}
+
+function select(selectors, result) {
+  if (!result) {
+    result = function result(arg) {
+      return arg;
+    };
+  }
+
+  if (Array.isArray(selectors)) {
+    return (0, _reselect.createSelector)(selectors, result);
+  }
+
+  return (0, _reselect.createStructuredSelector)(selectors);
 }
 
 exports.default = create;
